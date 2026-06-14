@@ -1,0 +1,7 @@
+model_list:
+  - model_name: supportlens-local
+    litellm_params:
+      model: ollama/llama3.1:8b
+      api_base: http://ollama:11434
+litellm_settings:
+  drop_params: true

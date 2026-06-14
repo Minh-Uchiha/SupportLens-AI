@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "supportlens-api"
+version = "0.1.0"
+description = "FastAPI backend for SupportLens AI"
+requires-python = ">=3.9"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
+  "pydantic-settings>=2.2",
+  "email-validator>=2.1",
+  "eval-type-backport>=0.2",
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.0",
+  "pytest-cov>=4.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = [".", "../.."]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
