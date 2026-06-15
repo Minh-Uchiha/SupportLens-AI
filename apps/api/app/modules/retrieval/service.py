@@ -48,6 +48,7 @@ def lexical_search(context: RequestContext, query: str, options: RetrievalOption
     query_terms = set(tokenize(query))
     results: list[EvidenceChunk] = []
     for chunk in get_chunks_for_tenant(context):
+        # Source filters are applied before scoring so unauthorized chunks never rank.
         if acl.allowed_source_ids and chunk.source_id not in acl.allowed_source_ids:
             continue
         terms = tokenize(chunk.text)
@@ -77,5 +78,6 @@ def retrieve_evidence(context: RequestContext, query: str, options: RetrievalOpt
     lexical = lexical_search(context, query, resolved_options)
     vector = vector_search(context, query, resolved_options)
     ranked = merge_and_rank(lexical, vector, resolved_options.limit)
+    # Low-confidence retrieval produces a refusal instead of unsupported generation.
     threshold_met = bool(ranked and ranked[0].score >= resolved_options.min_score)
     return EvidenceSet(query=query, chunks=ranked, threshold_met=threshold_met)

@@ -4,6 +4,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from sqlalchemy import delete, select
+
+from app.db.models import EvaluationResultRow, EvaluationSetRow
+from app.db.session import current_session
 from app.modules.auth_policy.schemas import RequestContext
 from app.modules.conversation.service import list_feedback
 
@@ -27,19 +31,34 @@ class EvaluationResult:
     run_metadata: dict[str, object]
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
-_sets: dict[str, EvaluationSet] = {}
-_results: dict[str, EvaluationResult] = {}
+def _to_set(row: EvaluationSetRow) -> EvaluationSet:
+    return EvaluationSet(id=row.id, tenant_id=row.tenant_id, name=row.name, scenario_count=row.scenario_count, status=row.status)
+
+
+def _to_result(row: EvaluationResultRow) -> EvaluationResult:
+    return EvaluationResult(
+        id=row.id,
+        tenant_id=row.tenant_id,
+        evaluation_set_id=row.evaluation_set_id,
+        metric=row.metric,
+        score=row.score,
+        run_metadata=row.run_metadata,
+        created_at=row.created_at,
+    )
 
 
 def reset_evaluation_store() -> None:
-    _sets.clear()
-    _results.clear()
+    session = current_session()
+    session.execute(delete(EvaluationResultRow))
+    session.execute(delete(EvaluationSetRow))
 
 
 def create_evaluation_set(context: RequestContext, name: str, scenario_count: int) -> EvaluationSet:
-    item = EvaluationSet(id=str(uuid4()), tenant_id=context.tenant_id, name=name, scenario_count=scenario_count)
-    _sets[item.id] = item
-    return item
+    item = EvaluationSetRow(id=str(uuid4()), tenant_id=context.tenant_id, name=name, scenario_count=scenario_count)
+    session = current_session()
+    session.add(item)
+    session.flush()
+    return _to_set(item)
 
 
 def run_quality_evaluation(context: RequestContext, evaluation_set_id: str) -> list[EvaluationResult]:
@@ -52,17 +71,21 @@ def run_quality_evaluation(context: RequestContext, evaluation_set_id: str) -> l
     }
     results: list[EvaluationResult] = []
     for metric, score in metrics.items():
-        result = EvaluationResult(
+        result = EvaluationResultRow(
             id=str(uuid4()), tenant_id=context.tenant_id, evaluation_set_id=evaluation_set_id,
             metric=metric, score=score, run_metadata={"feedback_count": feedback_count, "blocking_chat": False},
         )
-        _results[result.id] = result
-        results.append(result)
+        current_session().add(result)
+        current_session().flush()
+        results.append(_to_result(result))
     return results
 
 
 def list_results(context: RequestContext) -> list[EvaluationResult]:
-    return [result for result in _results.values() if result.tenant_id == context.tenant_id]
+    rows = current_session().scalars(
+        select(EvaluationResultRow).where(EvaluationResultRow.tenant_id == context.tenant_id).order_by(EvaluationResultRow.created_at)
+    )
+    return [_to_result(result) for result in rows]
 
 
 def launch_gate_report(context: RequestContext) -> dict[str, object]:

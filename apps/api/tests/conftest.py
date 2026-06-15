@@ -1,24 +1,24 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.config import Settings
+from app.db.session import reset_database
 from app.main import create_app
-from app.modules.conversation.service import reset_conversation_store
-from app.modules.evaluation.service import reset_evaluation_store
-from app.modules.source_management.service import reset_source_store
-from app.modules.telemetry.service import reset_telemetry_store
+
+
+@pytest.fixture(scope="session")
+def test_settings():
+    return Settings(database_url="sqlite+pysqlite:///:memory:")
 
 
 @pytest.fixture(autouse=True)
-def reset_stores():
-    reset_conversation_store()
-    reset_source_store()
-    reset_telemetry_store()
-    reset_evaluation_store()
+def reset_stores(test_settings):
+    reset_database(test_settings)
 
 
 @pytest.fixture
-def client():
-    return TestClient(create_app())
+def client(test_settings):
+    return TestClient(create_app(test_settings), raise_server_exceptions=False)
 
 
 @pytest.fixture

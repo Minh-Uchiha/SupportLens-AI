@@ -4,12 +4,13 @@ This list tracks pending work after the v1 scaffold. The current implementation 
 
 ## Persistence And Data Layer
 
-- [ ] Replace the default SQLite-style local database URL with PostgreSQL as the normal local/dev path.
-- [ ] Replace in-memory dictionaries in API service modules with real database persistence.
-- [ ] Add migrations and wire them into local setup and CI.
-- [ ] Use the schema in `apps/api/app/db/schema.sql` as the starting point for managed migrations.
-- [ ] Add database session lifecycle management, transactions, and rollback behavior.
-- [ ] Persist conversations, messages, answers, citations, sources, chunks, audit events, traces, usage events, feedback, and evaluation results.
+- [x] Replace the default SQLite-style local database URL with PostgreSQL as the normal local/dev path.
+- [x] Replace in-memory dictionaries in API service modules with real database persistence.
+- [x] Add migrations and wire them into local setup.
+- [ ] Wire migrations into CI.
+- [x] Use the schema in `apps/api/app/db/schema.sql` as the starting point for managed migrations.
+- [x] Add database session lifecycle management, transactions, and rollback behavior.
+- [x] Persist conversations, messages, answers, citations, sources, chunks, audit events, traces, usage events, feedback, and evaluation results.
 
 ## Retrieval And Ingestion
 
@@ -61,7 +62,9 @@ This list tracks pending work after the v1 scaffold. The current implementation 
 
 ## Developer Experience And Documentation
 
-- [ ] Add comments only where code is non-obvious, especially around policy, retrieval ranking, citation validation, and failure-state decisions.
+- [ ] Switch API runtime/testing assumptions to ASGI-native patterns.
+- [ ] Standardize test execution on `pytest`.
+- [x] Add comments only where code is non-obvious, especially around policy, retrieval ranking, citation validation, and failure-state decisions.
 - [ ] Expand the README with local setup, environment variables, Docker Compose usage, and troubleshooting.
 - [ ] Add runbooks for local model setup, source ingestion, failed sync recovery, and launch evaluation.
 - [ ] Add CI commands for API tests, API coverage, frontend lint/build, and Docker Compose config validation.

@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     app_name: str = "SupportLens AI"
     environment: str = "local"
-    database_url: str = Field(default="sqlite:///./supportlens.db")
+    database_url: str = Field(default="postgresql+psycopg://supportlens:supportlens@localhost:5432/supportlens")
     redis_url: str = Field(default="redis://localhost:6379/0")
     litellm_base_url: str = Field(default="http://localhost:4000/v1")
     litellm_model: str = Field(default="supportlens-local")
