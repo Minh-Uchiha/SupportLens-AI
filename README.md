@@ -57,6 +57,7 @@ cd apps/api
 python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[test]'
+alembic upgrade head
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
@@ -82,6 +83,8 @@ From the repo root:
 ```bash
 docker compose up -d
 ```
+
+The API container waits for Postgres and runs `alembic upgrade head` before starting Uvicorn.
 
 Default local ports:
 
@@ -143,7 +146,7 @@ The API reads settings from environment variables with the `SUPPORTLENS_` prefix
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `SUPPORTLENS_DATABASE_URL` | `sqlite:///./supportlens.db` | API database URL. Docker Compose overrides this with Postgres. |
+| `SUPPORTLENS_DATABASE_URL` | `postgresql+psycopg://supportlens:supportlens@localhost:5432/supportlens` | API database URL. Docker Compose points this at the Postgres service. |
 | `SUPPORTLENS_REDIS_URL` | `redis://localhost:6379/0` | Redis queue/cache URL. |
 | `SUPPORTLENS_LITELLM_BASE_URL` | `http://localhost:4000/v1` | LiteLLM OpenAI-compatible endpoint. |
 | `SUPPORTLENS_LITELLM_MODEL` | `supportlens-local` | Model name exposed through LiteLLM. |
@@ -165,6 +168,7 @@ apps/
   api/
     app/main.py                    FastAPI entry point
     app/core/config.py             API settings
+    app/db/                        SQLAlchemy models, sessions, migrations starter schema
     app/modules/auth_policy/       Tenant context, roles, fail-closed helpers
     app/modules/conversation/      Conversations, messages, feedback
     app/modules/answer/            Chat answer orchestration
@@ -179,6 +183,8 @@ workers/
   ingestion/                       Ingestion worker entrypoint and helpers
   evaluation/                      Evaluation worker entrypoint and jobs
 docs/
+  core_components/
+    persistence_and_data_layer.md
   PRD.md
   HLD.md
   LLD.md
@@ -187,7 +193,7 @@ docs/
 
 ## Current MVP Limitations
 
-- The service layer uses in-memory dictionaries for most data. `docker-compose.yml` includes Postgres, but persistence is not fully wired yet.
+- API service data is persisted in PostgreSQL through SQLAlchemy and Alembic migrations.
 - Retrieval uses simple token overlap and token-counter cosine scoring, not PostgreSQL full-text/trigram/pgvector yet.
 - Answer generation is deterministic local logic, not a live LiteLLM/Ollama model call yet.
 - Worker entrypoints exist, but ingestion sync currently runs in-process through API service code.

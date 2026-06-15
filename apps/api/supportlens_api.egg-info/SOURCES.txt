@@ -4,6 +4,7 @@ app/main.py
 app/core/__init__.py
 app/core/config.py
 app/db/__init__.py
+app/db/models.py
 app/db/session.py
 app/modules/__init__.py
 app/modules/answer/__init__.py
@@ -46,3 +47,4 @@ supportlens_api.egg-info/top_level.txt
 tests/test_chat_retrieval_answer.py
 tests/test_health_and_auth.py
 tests/test_ingestion_ops_evaluation.py
+tests/test_persistence_data_layer.py
