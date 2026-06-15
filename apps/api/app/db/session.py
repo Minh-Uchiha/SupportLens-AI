@@ -46,8 +46,10 @@ def get_db_session(settings: Settings | None = None) -> Iterator[Session]:
     token = _current_session.set(session)
     try:
         yield session
+        # A request is the unit of work: all service writes commit together.
         session.commit()
     except Exception:
+        # Preserve atomicity for multi-step flows like chat generation and source sync.
         session.rollback()
         raise
     finally:

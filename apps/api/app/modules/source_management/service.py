@@ -191,6 +191,7 @@ def run_sync_job(context: RequestContext, job_id: str) -> IngestionJob:
         docs = _load_documents_from_source(source)
         if not docs:
             raise ValueError("No documents found for source")
+        # The savepoint protects last-known-good chunks if replacement fails midway.
         with session.begin_nested():
             _replace_source_documents(context, source, docs)
         job.status = "completed"

@@ -15,6 +15,7 @@ def validate_citations(draft_answer: str, evidence: EvidenceSet, citation_ids: l
     evidence_ids = {chunk.chunk_id for chunk in evidence.chunks}
     if not citation_ids:
         return CitationValidationResult(valid=False, citation_ids=[], reason="No citations provided")
+    # Citations must come from retrieved evidence, not arbitrary chunk IDs.
     unknown = [citation_id for citation_id in citation_ids if citation_id not in evidence_ids]
     if unknown:
         return CitationValidationResult(valid=False, citation_ids=citation_ids, reason="Citation not present in retrieved evidence")

@@ -23,6 +23,7 @@ def _parse_roles(value: str | None) -> set[Role]:
 
 
 def resolve_request_context(request: Request) -> RequestContext:
+    # MVP auth is header-based; missing tenant/user context must fail closed.
     tenant_id = request.headers.get("x-tenant-id")
     user_id = request.headers.get("x-user-id")
     if not tenant_id or not user_id:

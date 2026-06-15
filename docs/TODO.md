@@ -64,7 +64,7 @@ This list tracks pending work after the v1 scaffold. The current implementation 
 
 - [ ] Switch API runtime/testing assumptions to ASGI-native patterns.
 - [ ] Standardize test execution on `pytest`.
-- [ ] Add comments only where code is non-obvious, especially around policy, retrieval ranking, citation validation, and failure-state decisions.
+- [x] Add comments only where code is non-obvious, especially around policy, retrieval ranking, citation validation, and failure-state decisions.
 - [ ] Expand the README with local setup, environment variables, Docker Compose usage, and troubleshooting.
 - [ ] Add runbooks for local model setup, source ingestion, failed sync recovery, and launch evaluation.
 - [ ] Add CI commands for API tests, API coverage, frontend lint/build, and Docker Compose config validation.

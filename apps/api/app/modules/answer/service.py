@@ -48,6 +48,7 @@ def generate_answer(context: RequestContext, request: ChatMessageRequest) -> Ans
     add_trace_stage(trace.id, "retrieval", {"count": len(evidence.chunks), "threshold_met": evidence.threshold_met})
 
     if not evidence.threshold_met:
+        # No evidence is a safe terminal state; do not ask the model to fill gaps.
         state = AnswerState.refused_no_evidence
         answer_text = "I could not find enough authorized evidence to answer that question."
         stored = store_answer(context, conversation_id, user_message.id, state.value, answer_text, trace.id, [])
@@ -58,6 +59,7 @@ def generate_answer(context: RequestContext, request: ChatMessageRequest) -> Ans
     model_result = call_model(prompt)
     add_trace_stage(trace.id, "model", {"model": model_result.model, "unavailable": model_result.unavailable})
     if model_result.unavailable:
+        # Persist the outage state so operators can distinguish model failures from refusals.
         state = AnswerState.model_unavailable
         answer_text = "Answer generation is temporarily unavailable."
         stored = store_answer(context, conversation_id, user_message.id, state.value, answer_text, trace.id, [])
@@ -68,6 +70,7 @@ def generate_answer(context: RequestContext, request: ChatMessageRequest) -> Ans
     validation = validate_citations(model_result.text, evidence, citation_ids)
     add_trace_stage(trace.id, "citation_validation", {"valid": validation.valid, "reason": validation.reason})
     state = classify_answer_state(True, validation.valid, model_result.unavailable)
+    # Failed citation validation returns a safe refusal instead of uncited model text.
     answer_text = model_result.text if validation.valid else "I cannot provide a supported answer because citation validation failed."
     citations = _citations_from_evidence(citation_ids, evidence.chunks) if validation.valid else []
     stored = store_answer(context, conversation_id, user_message.id, state.value, answer_text, trace.id, [item.chunk_id for item in citations])
