@@ -43,6 +43,7 @@ services:
       SUPPORTLENS_REDIS_URL: redis://redis:6379/0
       SUPPORTLENS_LITELLM_BASE_URL: http://litellm:4000/v1
       SUPPORTLENS_OLLAMA_BASE_URL: http://ollama:11434
+      SUPPORTLENS_INGESTION_ASYNC_ENABLED: "true"
     ports:
       - "8000:8000"
     depends_on:
@@ -68,18 +69,32 @@ services:
       context: .
       dockerfile: workers/Dockerfile
     command: ["python", "-m", "workers.ingestion.main"]
+    environment:
+      SUPPORTLENS_DATABASE_URL: postgresql+psycopg://supportlens:supportlens@postgres:5432/supportlens
+      SUPPORTLENS_REDIS_URL: redis://redis:6379/0
     depends_on:
-      - redis
-      - api
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      api:
+        condition: service_started
 
   evaluation-worker:
     build:
       context: .
       dockerfile: workers/Dockerfile
     command: ["python", "-m", "workers.evaluation.main"]
+    environment:
+      SUPPORTLENS_DATABASE_URL: postgresql+psycopg://supportlens:supportlens@postgres:5432/supportlens
+      SUPPORTLENS_REDIS_URL: redis://redis:6379/0
     depends_on:
-      - redis
-      - api
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      api:
+        condition: service_started
 
 volumes:
   ollama:

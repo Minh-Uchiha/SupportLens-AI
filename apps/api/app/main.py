@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI
 
 from app.core.config import Settings, get_settings
@@ -13,6 +15,9 @@ from app.modules.telemetry.routes import router as telemetry_router
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or get_settings()
+    # Configure root logging once so module info/error logs (retrieval, ingestion, etc.)
+    # surface. Uses force to take effect even if a library configured logging first.
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s", force=True)
     app = FastAPI(title=resolved.app_name, version="0.1.0")
     app.state.settings = resolved
 

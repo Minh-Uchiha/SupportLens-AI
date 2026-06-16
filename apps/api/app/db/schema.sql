@@ -62,5 +62,18 @@ CREATE TABLE IF NOT EXISTS knowledge_chunks (
   chunk_index INTEGER NOT NULL,
   text TEXT NOT NULL,
   citation_anchor TEXT NOT NULL,
-  acl_metadata JSONB NOT NULL DEFAULT '{}'
+  acl_metadata JSONB NOT NULL DEFAULT '{}',
+  embedding JSONB NOT NULL DEFAULT '[]',
+  embedding_model TEXT NOT NULL DEFAULT '',
+  embedding_version TEXT NOT NULL DEFAULT '',
+  -- 384 dims matches sentence-transformers/all-MiniLM-L6-v2 and the fallback embedder.
+  embedding_vector vector(384),
+  -- Generated column keeps full-text search in sync with the chunk text automatically.
+  tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', text)) STORED
 );
+
+-- Vector similarity (semantic search), full-text rank, and fuzzy trigram lexical match.
+CREATE INDEX IF NOT EXISTS ix_knowledge_chunks_embedding_vector
+  ON knowledge_chunks USING ivfflat (embedding_vector vector_cosine_ops) WITH (lists = 100);
+CREATE INDEX IF NOT EXISTS ix_knowledge_chunks_tsv ON knowledge_chunks USING gin (tsv);
+CREATE INDEX IF NOT EXISTS ix_knowledge_chunks_text_trgm ON knowledge_chunks USING gin (text gin_trgm_ops);
