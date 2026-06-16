@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
+from app.modules.source_management.connectors import load_documents_from_source
 
 
 def load_markdown_documents(root_path: str) -> list[dict[str, str]]:
-    root = Path(root_path)
-    if not root.exists():
-        raise FileNotFoundError(root_path)
-    files = [root] if root.is_file() else sorted(root.rglob("*.md"))
-    return [{"external_id": str(path), "title": path.stem, "text": path.read_text(encoding="utf-8")} for path in files]
+    """Load markdown documents from a path using the shared filesystem connector."""
+    documents = load_documents_from_source("filesystem", root_path, root_path)
+    return [{"external_id": external_id, "title": title, "text": text} for external_id, title, text in documents]

@@ -46,6 +46,8 @@ class KnowledgeChunk:
     citation_anchor: str
     acl_metadata: dict[str, Any] = field(default_factory=dict)
     embedding: list[float] = field(default_factory=list)
+    embedding_model: str = ""
+    embedding_version: str = ""
 
 
 @dataclass

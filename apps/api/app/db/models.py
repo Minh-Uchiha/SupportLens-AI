@@ -99,7 +99,14 @@ class KnowledgeChunkRow(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     citation_anchor: Mapped[str] = mapped_column(Text, nullable=False)
     acl_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    # The JSON embedding is the portable copy used by the SQLite fallback path. On
+    # Postgres, the migration also adds a native pgvector `embedding_vector` column
+    # that retrieval queries directly; both are written together at ingestion time.
     embedding: Mapped[list[float]] = mapped_column(JSON, nullable=False, default=list)
+    # Tracking the model and version on each chunk lets the re-embedding workflow
+    # find and refresh only the chunks produced by an older embedding model.
+    embedding_model: Mapped[str] = mapped_column(String, nullable=False, default="")
+    embedding_version: Mapped[str] = mapped_column(String, nullable=False, default="")
 
 
 class IngestionJobRow(Base):

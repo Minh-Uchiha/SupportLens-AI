@@ -8,7 +8,15 @@ sqlalchemy>=2.0
 alembic>=1.13
 psycopg[binary]>=3.1
 pgvector>=0.2
+numpy>=1.24
+rq>=1.16
+redis>=5.0
+
+[embeddings]
+sentence-transformers>=2.6
 
 [test]
 pytest>=8.0
 pytest-cov>=4.1
+fakeredis>=2.21
+testcontainers[postgres]>=4.0

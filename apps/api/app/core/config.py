@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     citation_required: bool = True
     max_retrieved_chunks: int = 8
     local_deterministic_llm: bool = True
+    # When enabled, source sync runs on an RQ worker instead of inline in the request.
+    # Defaults off so local dev and the synchronous test suite keep their current behavior;
+    # Docker Compose turns it on.
+    ingestion_async_enabled: bool = False
+    # Retry budget and backoff (seconds) for transient ingestion failures on the worker.
+    ingestion_max_retries: int = 3
+    ingestion_retry_backoff_seconds: int = 5
 
 
 @lru_cache

@@ -14,13 +14,15 @@ This list tracks pending work after the v1 scaffold. The current implementation 
 
 ## Retrieval And Ingestion
 
-- [ ] Move retrieval from token-counter scoring to PostgreSQL full-text search, trigram search, and `pgvector`.
-- [ ] Generate and store real embeddings with `sentence-transformers`.
-- [ ] Add embedding version/model tracking and re-embedding workflow.
-- [ ] Convert ingestion job execution from immediate in-process calls to Redis/RQ workers.
-- [ ] Add retry, backoff, cleanup, permission refresh, scheduled refresh, and incremental update coverage in worker tests.
-- [ ] Expand source connectors beyond inline text and filesystem/markdown when the first real source is selected.
-- [ ] Validate last-known-good index behavior against PostgreSQL-backed data.
+- [x] Move retrieval from token-counter scoring to PostgreSQL full-text search, trigram search, and `pgvector`.
+- [x] Generate and store real embeddings with `sentence-transformers`.
+- [x] Add embedding version/model tracking and re-embedding workflow.
+- [x] Convert ingestion job execution from immediate in-process calls to Redis/RQ workers.
+- [x] Add retry, backoff, cleanup, permission refresh, scheduled refresh, and incremental update coverage in worker tests.
+- [x] Expand source connectors beyond inline text and filesystem/markdown when the first real source is selected.
+- [x] Validate last-known-good index behavior against PostgreSQL-backed data.
+- [ ] Run `enqueue_scheduled_refreshes` on a periodic driver (RQ cron / `rq-scheduler` / external cron) so auto-sync sources refresh automatically; today it only runs when called explicitly.
+- [ ] Add a scheduler service to `docker-compose.yml` (and a worker entrypoint) that triggers scheduled refresh on a configurable interval.
 
 ## LLM And Answer Quality
 

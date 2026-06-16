@@ -12,6 +12,7 @@ from app.modules.source_management.service import (
     delete_source,
     list_jobs,
     list_sources,
+    reembed_source,
     source_health,
     trigger_sync,
     update_source,
@@ -39,6 +40,11 @@ def patch_source(source_id: str, payload: SourcePatch, context: RequestContext =
 @router.post("/{source_id}/sync")
 def post_sync(source_id: str, payload: SyncRequest, context: RequestContext = Depends(admin_context)):
     return trigger_sync(context, source_id, payload)
+
+
+@router.post("/{source_id}/reembed")
+def post_reembed(source_id: str, context: RequestContext = Depends(admin_context)):
+    return reembed_source(context, source_id)
 
 
 @router.get("/{source_id}/health")

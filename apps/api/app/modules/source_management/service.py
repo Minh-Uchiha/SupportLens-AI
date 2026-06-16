@@ -1,18 +1,35 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
-from pathlib import Path
 from uuid import uuid4
 
 from fastapi import HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 
 from app.db.models import IngestionJobRow, KnowledgeChunkRow, KnowledgeSourceRow, SourceDocumentRow
 from app.db.session import current_session
 from app.modules.auth_policy.schemas import RequestContext
+from app.modules.llm_gateway.embeddings import current_embedding_model, current_embedding_version, embed_texts
+from app.modules.source_management.connectors import load_documents_from_source
 from app.modules.source_management.models import IngestionJob, KnowledgeChunk, KnowledgeSource, SourceDocument
 from app.modules.telemetry.service import write_audit_event
+
+logger = logging.getLogger(__name__)
+
+# Job types the sync endpoint and workers accept. Centralized so the API allowlist and
+# worker dispatch never drift apart.
+VALID_JOB_TYPES = {
+    "initial_sync",
+    "scheduled_refresh",
+    "incremental_update",
+    "manual_resync",
+    "retry_failed_sync",
+    "permission_refresh",
+    "cleanup_source",
+    "reembed",
+}
 
 
 class SourceCreate(BaseModel):
@@ -79,6 +96,8 @@ def _to_chunk(row: KnowledgeChunkRow) -> KnowledgeChunk:
         citation_anchor=row.citation_anchor,
         acl_metadata=row.acl_metadata,
         embedding=row.embedding,
+        embedding_model=row.embedding_model,
+        embedding_version=row.embedding_version,
     )
 
 
@@ -164,11 +183,14 @@ def _enqueue_job(context: RequestContext, source_id: str, job_type: str, reason:
 
 def trigger_sync(context: RequestContext, source_id: str, payload: SyncRequest) -> IngestionJob:
     source = _get_source_row(context, source_id)
-    job_type = payload.sync_reason if payload.sync_reason in {
-        "initial_sync", "scheduled_refresh", "incremental_update", "manual_resync", "retry_failed_sync", "permission_refresh", "cleanup_source"
-    } else "manual_resync"
+    job_type = payload.sync_reason if payload.sync_reason in VALID_JOB_TYPES else "manual_resync"
     job = _enqueue_job(context, source_id, job_type, payload.sync_reason)
-    job = run_sync_job(context, job.id)
+    # Async dispatch (RQ) is opt-in via settings. When it is enabled the API returns the
+    # queued job immediately and a worker runs it; otherwise we run it inline so local
+    # development and the synchronous test suite keep working unchanged.
+    from app.modules.source_management.queue import enqueue_or_run_inline
+
+    job = enqueue_or_run_inline(context, job.id)
     write_audit_event(context, "source.sync", "ingestion_job", job.id)
     source.last_sync_at = datetime.now(timezone.utc)
     current_session().flush()
@@ -181,63 +203,145 @@ def run_sync_job(context: RequestContext, job_id: str) -> IngestionJob:
     if job is None or job.tenant_id != context.tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ingestion job not found")
     source = _get_source_row(context, job.source_id)
+    logger.info("Sync job start job_id=%s type=%s source_id=%s", job.id, job.job_type, source.id)
     try:
         if job.job_type == "cleanup_source":
             session.execute(delete(KnowledgeChunkRow).where(KnowledgeChunkRow.source_id == source.id))
             job.status = "completed"
             source.last_sync_status = "cleanup_complete"
             session.flush()
+            logger.info("Cleanup complete job_id=%s source_id=%s", job.id, source.id)
             return _to_job(job)
-        docs = _load_documents_from_source(source)
+        if job.job_type == "permission_refresh":
+            updated = _refresh_permissions(context, source)
+            job.status = "completed"
+            source.last_sync_status = "success"
+            session.flush()
+            logger.info("Permission refresh complete job_id=%s source_id=%s chunks=%d", job.id, source.id, updated)
+            return _to_job(job)
+        if job.job_type == "reembed":
+            count = _reembed_source_chunks(context, source)
+            job.status = "completed"
+            source.last_sync_status = "success"
+            session.flush()
+            logger.info("Re-embed complete job_id=%s source_id=%s chunks=%d", job.id, source.id, count)
+            return _to_job(job)
+
+        docs = load_documents_from_source(source.type, source.name, source.connection_ref)
         if not docs:
             raise ValueError("No documents found for source")
         # The savepoint protects last-known-good chunks if replacement fails midway.
         with session.begin_nested():
-            _replace_source_documents(context, source, docs)
+            doc_count, chunk_count = _replace_source_documents(context, source, docs)
         job.status = "completed"
         source.last_sync_status = "success"
         source.last_failure_reason = None
         source.last_sync_at = datetime.now(timezone.utc)
+        logger.info("Sync complete job_id=%s source_id=%s docs=%d chunks=%d", job.id, source.id, doc_count, chunk_count)
     except Exception as exc:  # keep last-known-good chunks on sync failure
         job.status = "failed"
         source.last_sync_status = "failed"
         source.last_failure_reason = str(exc)
+        # Log the failure with a stack trace; the index is left intact by the savepoint above.
+        logger.error("Sync job failed job_id=%s source_id=%s", job.id, source.id, exc_info=True)
     session.flush()
     return _to_job(job)
 
 
-def _load_documents_from_source(source: KnowledgeSourceRow) -> list[tuple[str, str, str]]:
-    if source.type == "inline":
-        text = source.connection_ref.strip() or "SupportLens AI requires citations for every substantive support answer."
-        return [("inline-doc", source.name, text)]
-    if source.type in {"filesystem", "markdown"}:
-        path = Path(source.connection_ref)
-        if not path.exists():
-            raise FileNotFoundError(f"Source path does not exist: {path}")
-        files = sorted([p for p in path.rglob("*.md") if p.is_file()]) if path.is_dir() else [path]
-        return [(str(p), p.stem.replace("-", " ").title(), p.read_text(encoding="utf-8")) for p in files]
-    raise ValueError(f"Unsupported source type: {source.type}")
-
-
-def _replace_source_documents(context: RequestContext, source: KnowledgeSourceRow, docs: list[tuple[str, str, str]]) -> None:
+def _replace_source_documents(
+    context: RequestContext, source: KnowledgeSourceRow, docs: list[tuple[str, str, str]]
+) -> tuple[int, int]:
     session = current_session()
     session.execute(delete(KnowledgeChunkRow).where(KnowledgeChunkRow.source_id == source.id))
     session.execute(delete(SourceDocumentRow).where(SourceDocumentRow.source_id == source.id))
-    for external_id, title, text in docs:
+    chunk_count = 0
+    for external_id, title, doc_text in docs:
         document = SourceDocumentRow(
             id=str(uuid4()), tenant_id=context.tenant_id, source_id=source.id,
-            external_id=external_id, title=title, url=external_id, version=str(hash(text)), text=text,
+            external_id=external_id, title=title, url=external_id, version=str(hash(doc_text)), text=doc_text,
             acl_metadata={"permission_mode": source.permission_mode},
         )
         session.add(document)
         session.flush()
-        for idx, chunk_text in enumerate(chunk_text_for_index(text)):
+        chunk_texts = chunk_text_for_index(doc_text)
+        # Embed the whole document's chunks in one batch so the embedder loads once per doc.
+        embeddings = embed_texts(chunk_texts) if chunk_texts else []
+        for idx, (chunk_text, embedding) in enumerate(zip(chunk_texts, embeddings)):
             chunk = KnowledgeChunkRow(
                 id=str(uuid4()), tenant_id=context.tenant_id, source_id=source.id, document_id=document.id,
                 chunk_index=idx, text=chunk_text, citation_anchor=f"{title}#chunk-{idx + 1}",
                 acl_metadata=document.acl_metadata,
+                embedding=embedding,
+                embedding_model=current_embedding_model(),
+                embedding_version=current_embedding_version(),
             )
             session.add(chunk)
+            session.flush()
+            _write_pg_vector(chunk.id, embedding)
+            chunk_count += 1
+    return len(docs), chunk_count
+
+
+def _write_pg_vector(chunk_id: str, embedding: list[float]) -> None:
+    """Mirror the JSON embedding into the native pgvector column when on Postgres.
+
+    The ORM model only knows the portable JSON column, so the native vector (used by the
+    similarity index) is written with a small raw UPDATE. It is a no-op on SQLite.
+    """
+    session = current_session()
+    bind = session.get_bind()
+    if bind is None or bind.dialect.name != "postgresql":
+        return
+    vector_literal = "[" + ",".join(str(value) for value in embedding) + "]"
+    session.execute(
+        text("UPDATE knowledge_chunks SET embedding_vector = CAST(:vec AS vector) WHERE id = :id"),
+        {"vec": vector_literal, "id": chunk_id},
+    )
+
+
+def _reembed_source_chunks(context: RequestContext, source: KnowledgeSourceRow) -> int:
+    """Re-embed only chunks whose stored model/version differs from the current embedder."""
+    session = current_session()
+    model, version = current_embedding_model(), current_embedding_version()
+    rows = session.scalars(
+        select(KnowledgeChunkRow).where(
+            KnowledgeChunkRow.source_id == source.id,
+            KnowledgeChunkRow.tenant_id == context.tenant_id,
+        )
+    ).all()
+    stale = [row for row in rows if row.embedding_model != model or row.embedding_version != version]
+    if not stale:
+        return 0
+    embeddings = embed_texts([row.text for row in stale])
+    for row, embedding in zip(stale, embeddings):
+        row.embedding = embedding
+        row.embedding_model = model
+        row.embedding_version = version
+        _write_pg_vector(row.id, embedding)
+    session.flush()
+    return len(stale)
+
+
+def _refresh_permissions(context: RequestContext, source: KnowledgeSourceRow) -> int:
+    """Re-apply the source permission mode onto its documents and chunks.
+
+    Real connectors will resolve ACLs from the source system here; for the current
+    connectors we propagate the source's permission mode so ACL metadata stays consistent.
+    """
+    session = current_session()
+    acl = {"permission_mode": source.permission_mode}
+    documents = session.scalars(
+        select(SourceDocumentRow).where(SourceDocumentRow.source_id == source.id, SourceDocumentRow.tenant_id == context.tenant_id)
+    ).all()
+    for document in documents:
+        document.acl_metadata = acl
+    chunks = session.scalars(
+        select(KnowledgeChunkRow).where(KnowledgeChunkRow.source_id == source.id, KnowledgeChunkRow.tenant_id == context.tenant_id)
+    ).all()
+    for chunk in chunks:
+        chunk.acl_metadata = acl
+    session.flush()
+    return len(chunks)
 
 
 def chunk_text_for_index(text: str, target_words: int = 180, overlap_words: int = 30) -> list[str]:
@@ -286,6 +390,24 @@ def source_health(context: RequestContext, source_id: str) -> dict[str, object]:
         "chunk_count": chunk_count or 0,
         "freshness": "stale" if source.last_sync_status == "failed" else "fresh",
     }
+
+
+def get_job(context: RequestContext, job_id: str) -> IngestionJob:
+    job = current_session().get(IngestionJobRow, job_id)
+    if job is None or job.tenant_id != context.tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ingestion job not found")
+    return _to_job(job)
+
+
+def reembed_source(context: RequestContext, source_id: str) -> IngestionJob:
+    """Public entrypoint to enqueue/run a re-embedding pass for a source's chunks."""
+    _get_source_row(context, source_id)
+    job = _enqueue_job(context, source_id, "reembed", "reembed")
+    from app.modules.source_management.queue import enqueue_or_run_inline
+
+    job = enqueue_or_run_inline(context, job.id)
+    write_audit_event(context, "source.reembed", "ingestion_job", job.id)
+    return job
 
 
 def list_jobs(context: RequestContext) -> list[IngestionJob]:

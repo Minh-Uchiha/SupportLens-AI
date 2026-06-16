@@ -2,7 +2,23 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from app.modules.llm_gateway.embeddings import (
+    EMBEDDING_DIM,
+    current_embedding_model,
+    current_embedding_version,
+    embed_texts,
+)
 from app.modules.retrieval.schemas import EvidenceSet
+
+__all__ = [
+    "ModelResult",
+    "PromptBundle",
+    "call_model",
+    "embed_texts",
+    "EMBEDDING_DIM",
+    "current_embedding_model",
+    "current_embedding_version",
+]
 
 
 class ModelResult(BaseModel):
@@ -26,11 +42,3 @@ def call_model(prompt_bundle: PromptBundle, model_options: dict | None = None) -
     sentence = leading.text.strip().split(". ")[0].strip()
     answer = sentence if sentence.endswith(".") else f"{sentence}."
     return ModelResult(text=answer)
-
-
-def embed_texts(texts: list[str], embedding_options: dict | None = None) -> list[list[float]]:
-    vectors = []
-    for text in texts:
-        tokens = text.lower().split()
-        vectors.append([float(len(tokens)), float(len(set(tokens))), float(sum(len(token) for token in tokens))])
-    return vectors
