@@ -1,0 +1,41 @@
+{
+  "name": "launch-support-v1",
+  "description": "Representative internal support questions used to evaluate groundedness, citation correctness, retrieval relevance, and refusal behavior before launch.",
+  "scenarios": [
+    {
+      "id": "sl-429-rate-limit",
+      "question": "How do I resolve error SL-429?",
+      "source_text": "Error SL-429 means the tenant has exceeded support rate limits. Resolve it by checking usage and retrying after the backoff window.",
+      "expected_state": "answered",
+      "expected_citation": true
+    },
+    {
+      "id": "password-reset",
+      "question": "Why are password reset emails failing?",
+      "source_text": "Password reset errors require verifying the identity provider status page before retrying the reset flow.",
+      "expected_state": "answered",
+      "expected_citation": true
+    },
+    {
+      "id": "citation-policy",
+      "question": "What happens when citation validation fails?",
+      "source_text": "Citation failures must return a safe refusal instead of unsupported generation.",
+      "expected_state": "answered",
+      "expected_citation": true
+    },
+    {
+      "id": "absent-topic",
+      "question": "What is the refund policy for enterprise contracts?",
+      "source_text": null,
+      "expected_state": "refused_no_evidence",
+      "expected_citation": false
+    },
+    {
+      "id": "ambiguous-reset",
+      "question": "How do I reset it?",
+      "source_text": "Password reset errors require verifying the identity provider status page before retrying the reset flow.",
+      "expected_state": "clarification_required",
+      "expected_citation": false
+    }
+  ]
+}

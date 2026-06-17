@@ -40,6 +40,9 @@ test = [
 pythonpath = [".", "../.."]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+  "e2e: full end-to-end integration test against real Postgres, embeddings, and LiteLLM/Ollama (opt-in; auto-skips when unavailable)",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

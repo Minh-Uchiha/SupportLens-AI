@@ -22,7 +22,15 @@ class Settings(BaseSettings):
     telemetry_enabled: bool = True
     citation_required: bool = True
     max_retrieved_chunks: int = 8
+    # When true, generation uses the deterministic offline generator instead of LiteLLM.
+    # Defaults true so local dev and the offline test suite run without a live Ollama;
+    # Docker Compose sets it false to exercise the real LiteLLM proxy path.
     local_deterministic_llm: bool = True
+    # LiteLLM call budget. Transient failures (timeout, connection error, 5xx) are retried
+    # up to llm_max_retries times with a fixed backoff, all within the timeout budget.
+    llm_timeout_seconds: float = 30.0
+    llm_max_retries: int = 2
+    llm_retry_backoff_seconds: float = 0.5
     # When enabled, source sync runs on an RQ worker instead of inline in the request.
     # Defaults off so local dev and the synchronous test suite keep their current behavior;
     # Docker Compose turns it on.

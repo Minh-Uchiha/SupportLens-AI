@@ -42,13 +42,25 @@ def _strip_html(raw: str) -> str:
     return collapsed.strip()
 
 
+# Many documentation sites and CDNs reject requests without a browser-like User-Agent
+# (returning 403/405), so send one by default. Connectors can still be customized via
+# register_connector if a source needs auth headers or a different client.
+_HTTP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0 Safari/537.36 SupportLensBot/1.0"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
+
+
 def _load_http(name: str, connection_ref: str) -> list[LoadedDocument]:
     if not connection_ref.strip():
         raise ValueError("HTTP source requires a URL in connection_ref")
     try:
         import httpx
 
-        response = httpx.get(connection_ref, timeout=30.0, follow_redirects=True)
+        response = httpx.get(connection_ref, timeout=30.0, follow_redirects=True, headers=_HTTP_HEADERS)
         response.raise_for_status()
         body = response.text
     except Exception:

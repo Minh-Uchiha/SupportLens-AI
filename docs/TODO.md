@@ -26,12 +26,12 @@ This list tracks pending work after the v1 scaffold. The current implementation 
 
 ## LLM And Answer Quality
 
-- [ ] Replace deterministic local answer generation with LiteLLM/Ollama calls.
-- [ ] Add timeout, retry, and model-unavailable handling around LiteLLM.
-- [ ] Strengthen prompt templates for grounded answers, refusals, clarifications, partial answers, and conflicting evidence.
-- [ ] Expand citation validation beyond chunk-ID presence to claim support and citation span checks.
-- [ ] Add tests for all answer states: answered, partial, clarification required, no evidence, unauthorized, source unavailable, model unavailable, and citation validation failed.
-- [ ] Add a small launch evaluation dataset with representative support questions.
+- [x] Replace deterministic local answer generation with LiteLLM/Ollama calls.
+- [x] Add timeout, retry, and model-unavailable handling around LiteLLM.
+- [x] Strengthen prompt templates for grounded answers, refusals, clarifications, partial answers, and conflicting evidence.
+- [x] Expand citation validation beyond chunk-ID presence to claim support and citation span checks.
+- [x] Add tests for all answer states: answered, partial, clarification required, no evidence, unauthorized, source unavailable, model unavailable, and citation validation failed.
+- [x] Add a small launch evaluation dataset with representative support questions.
 
 ## Observability And Operations
 

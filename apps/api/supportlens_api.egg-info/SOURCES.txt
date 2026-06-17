@@ -24,10 +24,12 @@ app/modules/conversation/routes.py
 app/modules/conversation/schemas.py
 app/modules/conversation/service.py
 app/modules/evaluation/__init__.py
+app/modules/evaluation/datasets.py
 app/modules/evaluation/routes.py
 app/modules/evaluation/service.py
 app/modules/llm_gateway/__init__.py
 app/modules/llm_gateway/embeddings.py
+app/modules/llm_gateway/litellm_client.py
 app/modules/llm_gateway/service.py
 app/modules/retrieval/__init__.py
 app/modules/retrieval/ranking.py
@@ -47,10 +49,3 @@ supportlens_api.egg-info/SOURCES.txt
 supportlens_api.egg-info/dependency_links.txt
 supportlens_api.egg-info/requires.txt
 supportlens_api.egg-info/top_level.txt
-tests/test_chat_retrieval_answer.py
-tests/test_connectors_and_queue.py
-tests/test_health_and_auth.py
-tests/test_ingestion_ops_evaluation.py
-tests/test_ingestion_workers.py
-tests/test_persistence_data_layer.py
-tests/test_retrieval_postgres.py
