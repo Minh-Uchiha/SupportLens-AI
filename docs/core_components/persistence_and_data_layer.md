@@ -11,7 +11,7 @@ The data layer owns four concerns:
 - Request-scoped transaction handling so multi-step flows either commit together or roll back together.
 - Local development ergonomics through Docker Compose, Postgres defaults, and a migration command that is the same inside and outside the API container.
 
-Current retrieval still reads chunk rows into the existing lexical/token-counter ranking code. PostgreSQL full-text, trigram, and pgvector ranking are tracked separately in `docs/TODO.md` because they change retrieval behavior, not just persistence.
+Retrieval reads these chunk rows through real hybrid search: PostgreSQL full-text (`ts_rank`) and trigram (`pg_trgm` `similarity`) lexical scoring plus `pgvector` cosine similarity over the chunk embeddings. On SQLite (used by some offline tests) the same chunk rows are scored with a portable in-Python fallback. The retrieval ranking design itself lives in `docs/core_components/retrieval_and_ingestion.md`; this note covers how the chunk and embedding rows are persisted.
 
 ## Technology Choices And Tradeoffs
 
@@ -142,6 +142,9 @@ erDiagram
     text citation_anchor
     json acl_metadata
     json embedding
+    vector embedding_vector
+    string embedding_model
+    string embedding_version
   }
   INGESTION_JOBS {
     string id PK
@@ -268,7 +271,7 @@ erDiagram
 
 ### Source And Retrieval Models
 
-`knowledge_sources` stores source configuration, sync policy, permission mode, and last sync status. `source_documents` stores normalized source documents for a source, including freshness and ACL metadata. `knowledge_chunks` stores chunk-level text, citation anchors, ACL metadata, and an embedding placeholder. Retrieval reads chunks because chunks are the evidence unit shown in answer citations.
+`knowledge_sources` stores source configuration, sync policy, permission mode, and last sync status. `source_documents` stores normalized source documents for a source, including freshness and ACL metadata. `knowledge_chunks` stores chunk-level text, citation anchors, ACL metadata, and the chunk embedding. The embedding is written in two forms: a portable JSON `embedding` column used by the SQLite fallback path, and a native `pgvector` `embedding_vector` column that retrieval queries directly on Postgres. Each chunk also records `embedding_model` and `embedding_version` so the re-embedding workflow can refresh only chunks produced by an older model. Retrieval reads chunks because chunks are the evidence unit shown in answer citations.
 
 `ingestion_jobs` records sync attempts for a source. Jobs are separate from sources so operators can inspect a history of initial syncs, manual resyncs, retries, permission refreshes, and cleanup operations. Source sync replaces documents and chunks in a nested transaction so a failed replacement can keep the last-known-good index intact.
 
@@ -309,11 +312,11 @@ alembic upgrade head
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Tests use an isolated SQLite database for fast integration coverage of service behavior and rollback semantics. PostgreSQL-specific behavior is verified by applying Alembic migrations against the local `pgvector/pgvector:pg16` container.
+Tests prefer a real, isolated `pgvector/pgvector:pg16` database started through testcontainers when Docker is available, which exercises Alembic migrations, full-text/trigram ranking, and `pgvector` similarity against production-like Postgres. When Docker is not available, they fall back to an isolated SQLite database that covers service behavior, rollback semantics, and the portable in-Python retrieval path.
 
 ## Known Limits And Future Work
 
-This layer persists chunks and has the extensions required for stronger retrieval, but it does not yet implement PostgreSQL full-text search, trigram ranking, real embeddings, or pgvector similarity search. Those belong to the Retrieval And Ingestion work because they change ranking behavior and require embedding generation/versioning.
+This layer persists chunks and their embeddings, and the schema now backs real PostgreSQL full-text search, trigram ranking, and `pgvector` similarity search. The ranking behavior, embedding generation, and embedding versioning details are documented in `docs/core_components/retrieval_and_ingestion.md`. The remaining persistence-side gap is index tuning: vector and trigram indexes can be added or tuned as data volume grows.
 
 The current schema stores normalized source text directly in PostgreSQL. That is appropriate for the MVP scale and keeps local development simple, but large binary files, long retention windows, or compliance-driven raw document retention may justify object storage later.
 

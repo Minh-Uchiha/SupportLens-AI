@@ -104,7 +104,7 @@ All modules in this layer use the standard library `logging` with a module-level
 
 ## Testing
 
-The test harness in `apps/api/tests/conftest.py` starts a `pgvector/pgvector:pg16` testcontainer and runs Alembic migrations against it when Docker is available, exercising the real FTS/trigram/pgvector path; otherwise it falls back to SQLite in-memory. Postgres-only tests (`test_retrieval_postgres.py`) skip on the SQLite fallback. Worker coverage (`test_ingestion_workers.py`, `test_connectors_and_queue.py`) covers cleanup, permission refresh, incremental update, re-embedding, retry then success with last-known-good preservation, the worker entrypoint, scheduled refresh enqueue, the connector registry, and the async enqueue path using fakeredis.
+Tests live under `apps/api/tests`, split into `unit/` and `integration/`, with shared fixtures in `apps/api/tests/conftest.py`. The harness starts a `pgvector/pgvector:pg16` testcontainer and runs Alembic migrations against it when Docker is available, exercising the real FTS/trigram/pgvector path; otherwise it falls back to SQLite in-memory. Postgres-only tests (`integration/test_retrieval_postgres.py`) skip on the SQLite fallback. Worker coverage (`integration/test_ingestion_workers.py`, `integration/test_connectors_and_queue.py`) covers cleanup, permission refresh, incremental update, re-embedding, retry then success with last-known-good preservation, the worker entrypoint, scheduled refresh enqueue, the connector registry, and the async enqueue path using fakeredis.
 
 ## Known Limits And Future Work
 

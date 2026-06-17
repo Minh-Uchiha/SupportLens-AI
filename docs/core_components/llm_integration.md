@@ -63,7 +63,7 @@ When the call cannot complete, the gateway degrades rather than failing hard: if
 
 ### Deterministic Offline Fallback
 
-`local_deterministic_llm` selects a deterministic, dependency-free generator that produces an answer from the leading evidence chunk. It mirrors the embedding gateway's hash-fallback pattern: it keeps the offline test suite and lightweight installs working without a live Ollama, and it keeps existing chat tests reproducible. The flag defaults to `True` for local/test and is set to `False` in Docker Compose, where the real LiteLLM path runs. A `simulate_model_unavailable` hook in the question text forces the unavailable path so the `model_unavailable` state stays testable offline.
+`local_deterministic_llm` selects a deterministic, dependency-free generator that produces an answer from the leading evidence chunk. It mirrors the embedding gateway's hash-fallback pattern: it keeps the offline test suite and lightweight installs working without a live Ollama, and it keeps existing chat tests reproducible. The flag defaults to `True`, so local development, tests, and the default Docker Compose stack all use the deterministic generator. To run the real LiteLLM path, set `SUPPORTLENS_LOCAL_DETERMINISTIC_LLM=false` (in Docker Compose this means adding it to the `api` service environment, since Compose wires up the LiteLLM and Ollama services but leaves the flag at its default). A `simulate_model_unavailable` hook in the question text forces the unavailable path so the `model_unavailable` state stays testable offline.
 
 ## Prompt Templates
 
@@ -115,7 +115,9 @@ Modules in this layer use the standard library `logging` with a module-level log
 
 ## Testing
 
-The offline-safe deterministic generator means the chat and answer tests run without a live Ollama. `apps/api/tests/test_chat_retrieval_answer.py` covers the seeded answered path, no-evidence refusal, the simulated model-unavailable path, and paraphrased retrieval. Answer-quality tests exercise every answer state (`answered`, `partial`, `clarification_required`, `refused_no_evidence`, `refused_unauthorized`, `source_unavailable`, `model_unavailable`, `citation_validation_failed`), the citation claim-support and span-resolution failure cases, and the LiteLLM path with a monkeypatched HTTP client to assert timeout, retry, and fallback behavior. The launch dataset loader has its own unit coverage. The API coverage gate is `pytest --cov=app --cov-report=term-missing --cov-fail-under=80`.
+The offline-safe deterministic generator means the chat and answer tests run without a live Ollama. Tests are split into `apps/api/tests/unit` and `apps/api/tests/integration`. `integration/test_chat_retrieval_answer.py` covers the seeded answered path, no-evidence refusal, the simulated model-unavailable path, and paraphrased retrieval. `unit/test_llm_answer_quality.py` exercises every answer state (`answered`, `partial`, `clarification_required`, `refused_no_evidence`, `refused_unauthorized`, `source_unavailable`, `model_unavailable`, `citation_validation_failed`), the citation claim-support and span-resolution failure cases, the LiteLLM path with a monkeypatched HTTP client to assert timeout, retry, and fallback behavior, and the launch dataset loader. The API coverage gate is `pytest --cov=app --cov-report=term-missing --cov-fail-under=80`.
+
+For a full live check of real generation, the opt-in `integration/test_e2e_live_answer.py` runs the entire path against a real LiteLLM/Ollama model and real `sentence-transformers` embeddings; it auto-skips unless those services and the `embeddings` extra are present (see the README's live e2e instructions).
 
 ## Known Limits And Future Work
 
