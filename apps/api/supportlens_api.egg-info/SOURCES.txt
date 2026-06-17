@@ -49,12 +49,3 @@ supportlens_api.egg-info/SOURCES.txt
 supportlens_api.egg-info/dependency_links.txt
 supportlens_api.egg-info/requires.txt
 supportlens_api.egg-info/top_level.txt
-tests/test_chat_retrieval_answer.py
-tests/test_connectors_and_queue.py
-tests/test_e2e_live_answer.py
-tests/test_health_and_auth.py
-tests/test_ingestion_ops_evaluation.py
-tests/test_ingestion_workers.py
-tests/test_llm_answer_quality.py
-tests/test_persistence_data_layer.py
-tests/test_retrieval_postgres.py
