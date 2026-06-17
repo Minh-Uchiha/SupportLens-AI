@@ -28,6 +28,7 @@ app/modules/evaluation/routes.py
 app/modules/evaluation/service.py
 app/modules/llm_gateway/__init__.py
 app/modules/llm_gateway/embeddings.py
+app/modules/llm_gateway/litellm_client.py
 app/modules/llm_gateway/service.py
 app/modules/retrieval/__init__.py
 app/modules/retrieval/ranking.py

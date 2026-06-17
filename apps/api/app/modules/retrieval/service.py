@@ -197,15 +197,34 @@ def retrieve_evidence(context: RequestContext, query: str, options: RetrievalOpt
         lexical = lexical_search(context, query, resolved_options)
         vector = vector_search(context, query, resolved_options)
     except Exception:
-        # Surface the failure for operators but let the caller treat it as no evidence,
-        # which yields a safe refusal rather than an unsupported answer.
+        # An index/query failure is distinct from "no evidence": flag it so the orchestrator
+        # can return source_unavailable rather than a content refusal.
         logger.error("Retrieval query failed tenant=%s", context.tenant_id, exc_info=True)
-        return EvidenceSet(query=query, chunks=[], threshold_met=False)
+        return EvidenceSet(query=query, chunks=[], threshold_met=False, retrieval_error=True)
     ranked = merge_and_rank(lexical, vector, resolved_options.limit)
     # Low-confidence retrieval produces a refusal instead of unsupported generation.
     threshold_met = bool(ranked and ranked[0].score >= resolved_options.min_score)
+    # If nothing ranked but the tenant did have explicit source filters that excluded
+    # everything, treat it as an authorization refusal rather than "nothing indexed".
+    acl_filtered = bool(not ranked and resolved_options.source_ids and not _acl_permits_any(context, resolved_options))
     logger.info(
-        "Retrieval done tenant=%s lexical=%d vector=%d ranked=%d threshold_met=%s",
-        context.tenant_id, len(lexical), len(vector), len(ranked), threshold_met,
+        "Retrieval done tenant=%s lexical=%d vector=%d ranked=%d threshold_met=%s acl_filtered=%s",
+        context.tenant_id, len(lexical), len(vector), len(ranked), threshold_met, acl_filtered,
     )
-    return EvidenceSet(query=query, chunks=ranked, threshold_met=threshold_met)
+    return EvidenceSet(query=query, chunks=ranked, threshold_met=threshold_met, acl_filtered=acl_filtered)
+
+
+def _acl_permits_any(context: RequestContext, options: RetrievalOptions) -> bool:
+    """True if the tenant has any chunk whose source survives the ACL filter.
+
+    Used to distinguish refused_unauthorized (candidates existed but ACL removed them) from
+    refused_no_evidence (nothing relevant indexed). Best-effort and fail-open to "no evidence".
+    """
+    try:
+        allowed_sources = _allowed_source_ids(context, options)
+        for chunk in get_chunks_for_tenant(context):
+            if allowed_sources is None or chunk.source_id in allowed_sources:
+                return True
+    except Exception:
+        logger.error("ACL permit check failed tenant=%s", context.tenant_id, exc_info=True)
+    return False
