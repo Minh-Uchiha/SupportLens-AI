@@ -54,13 +54,13 @@ This list tracks pending work after the v1 scaffold. The current implementation 
 
 ## Frontend
 
-- [ ] Connect the chat shell to live API calls.
-- [ ] Connect admin source management screens to create, update, sync, and health APIs.
-- [ ] Connect operator screens to trace, audit, usage, and health APIs.
-- [ ] Add loading, empty, error, refusal, partial-answer, and citation-validation-failed states.
-- [ ] Add citation inspection UI with access-safe failure behavior.
-- [ ] Add feedback submission UI connected to the API.
-- [ ] Add frontend tests for chat states, citation panel behavior, source health views, and operator trace views.
+- [x] Connect the chat shell to live API calls.
+- [x] Connect admin source management screens to create, update, sync, and health APIs.
+- [x] Connect operator screens to trace, audit, usage, and health APIs.
+- [x] Add loading, empty, error, refusal, partial-answer, and citation-validation-failed states.
+- [x] Add citation inspection UI with access-safe failure behavior.
+- [x] Add feedback submission UI connected to the API.
+- [x] Add frontend tests for chat states, citation panel behavior, source health views, and operator trace views.
 
 ## Developer Experience And Documentation
 

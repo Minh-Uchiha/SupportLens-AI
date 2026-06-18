@@ -9,6 +9,21 @@ def test_health_reports_required_local_services(client):
     assert body["embedding_model"]
 
 
+def test_cors_preflight_allows_local_web_app(client):
+    response = client.options(
+        "/v1/chat/messages",
+        headers={
+            "origin": "http://localhost:3000",
+            "access-control-request-method": "POST",
+            "access-control-request-headers": "content-type,x-tenant-id,x-user-id,x-role",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert "POST" in response.headers["access-control-allow-methods"]
+    assert "x-tenant-id" in response.headers["access-control-allow-headers"].lower()
+
+
 def test_protected_route_requires_tenant_context(client):
     response = client.get("/v1/conversations")
     assert response.status_code == 401

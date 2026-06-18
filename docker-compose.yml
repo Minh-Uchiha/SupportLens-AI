@@ -44,6 +44,7 @@ services:
       SUPPORTLENS_LITELLM_BASE_URL: http://litellm:4000/v1
       SUPPORTLENS_OLLAMA_BASE_URL: http://ollama:11434
       SUPPORTLENS_INGESTION_ASYNC_ENABLED: "true"
+      SUPPORTLENS_LOCAL_DETERMINISTIC_LLM: "false"
     ports:
       - "8000:8000"
     depends_on:

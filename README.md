@@ -37,9 +37,9 @@ npm run dev
 Open:
 
 - `http://localhost:3000/` - landing page
-- `http://localhost:3000/chat` - chat shell
-- `http://localhost:3000/admin/sources` - source admin shell
-- `http://localhost:3000/operator` - operator dashboard shell
+- `http://localhost:3000/chat` - messenger-style chat UI
+- `http://localhost:3000/admin/sources` - source configuration console
+- `http://localhost:3000/operator` - operator dashboard
 
 Useful web commands:
 
@@ -47,6 +47,7 @@ Useful web commands:
 cd apps/web
 npm run lint
 npm run build
+npm test -- --runInBand
 ```
 
 ## Run The API Locally
@@ -120,6 +121,55 @@ Stop the stack:
 ```bash
 docker compose down
 ```
+
+## Running Without Stale Containers
+
+Two setups work well locally. The important rule is to avoid running the Docker `web` service and a host `npm run dev` server on port `3000` at the same time.
+
+### Option 1: Frontend on host, backend services in Docker
+
+Use this for fastest UI iteration:
+
+```bash
+# repo root
+docker compose up -d postgres redis api ingestion-worker scheduler-worker
+
+cd apps/web
+npm run dev
+```
+
+This keeps the frontend on `http://localhost:3000` from your current working tree instead of from a previously built container image.
+
+### Option 2: Everything in Docker
+
+Use this when you want the full stack to match the containerized environment:
+
+```bash
+docker compose down --remove-orphans
+docker compose up --build
+```
+
+If Docker still appears to serve old code, force a rebuild of the application images:
+
+```bash
+docker compose down --remove-orphans
+docker compose build --no-cache web api ingestion-worker evaluation-worker
+docker compose up
+```
+
+If local Next.js itself looks stale, clear its build cache and restart:
+
+```bash
+rm -rf apps/web/.next
+cd apps/web
+npm run dev
+```
+
+In practice, stale-code confusion usually comes from one of these:
+
+- a previously built Docker `web` image is still being reused
+- a host `npm run dev` server and the Docker `web` container are competing for port `3000`
+- Next.js is serving an old `.next` cache after large UI changes
 
 ### Run With The Real LLM And Embeddings
 
@@ -256,6 +306,69 @@ Docker Compose config check:
 ```bash
 docker compose config
 ```
+
+## Source Settings In The UI
+
+The Admin Sources page exposes source configuration that maps directly to the backend `KnowledgeSource` model in [service.py](/Users/minhp/Documents/AI-Projects/SupportLens-AI/apps/api/app/modules/source_management/service.py) and [models.py](/Users/minhp/Documents/AI-Projects/SupportLens-AI/apps/api/app/modules/source_management/models.py).
+
+### Permission Modes
+
+The UI offers three permission modes:
+
+- `tenant`
+- `source_acl`
+- `restricted`
+
+What they mean in the current code:
+
+- `tenant` is the default. The source is scoped to the tenant, and sync stores `{"permission_mode": "tenant"}` into document and chunk ACL metadata.
+- `source_acl` is intended for connectors that can preserve source-system ACLs, but today it is still stored as metadata only. The current built-in connectors do not resolve external ACLs yet.
+- `restricted` is a stricter label that is also stored into ACL metadata and can be refreshed onto existing chunks and documents.
+
+How the code handles them:
+
+- Source creation and updates persist `permission_mode` as a plain string field on the source row in [service.py](/Users/minhp/Documents/AI-Projects/SupportLens-AI/apps/api/app/modules/source_management/service.py).
+- During sync, `_replace_source_documents(...)` writes that value onto every document's and chunk's `acl_metadata` in the form `{"permission_mode": <value>}`.
+- `permission_refresh` jobs call `_refresh_permissions(...)`, which reapplies the source's current `permission_mode` onto already indexed documents and chunks.
+- Retrieval currently enforces tenant and source-id scope, but it does not yet branch behavior based on `tenant` vs `source_acl` vs `restricted`. So today `permission_mode` is preserved metadata and future policy surface, not a deep ACL engine.
+
+You can see that behavior exercised in [test_ingestion_workers.py](/Users/minhp/Documents/AI-Projects/SupportLens-AI/apps/api/tests/integration/test_ingestion_workers.py), where changing a source to `restricted` and running `permission_refresh` updates all chunk ACL metadata accordingly.
+
+### Sync Policy
+
+The UI offers these sync policies:
+
+- `manual`
+- `scheduled`
+- `incremental`
+
+What they mean in the current code:
+
+- `manual` means the source syncs only when an admin explicitly triggers an action such as `Create and sync`, `Sync now`, `Retry sync`, or `Permission refresh`.
+- `scheduled` marks the source as eligible for the scheduler to enqueue a `scheduled_refresh` job automatically.
+- `incremental` also marks the source as scheduler-eligible. The current scheduler still enqueues a `scheduled_refresh` job, while manual jobs can explicitly use `incremental_update`.
+
+How the code handles them:
+
+- `sync_policy` is stored on the source row as a plain string field in [service.py](/Users/minhp/Documents/AI-Projects/SupportLens-AI/apps/api/app/modules/source_management/service.py).
+- Manual UI actions call `POST /v1/admin/sources/{id}/sync` with explicit job reasons such as `initial_sync`, `manual_resync`, `retry_failed_sync`, or `permission_refresh`.
+- The scheduler in [sync_scheduler.py](/Users/minhp/Documents/AI-Projects/SupportLens-AI/workers/scheduler/sync_scheduler.py) selects enabled sources whose `sync_policy` is one of the auto-sync values and enqueues `scheduled_refresh`.
+- `run_sync_job(...)` handles `scheduled_refresh`, `incremental_update`, `manual_resync`, `retry_failed_sync`, and `initial_sync` through the same document reload path: fetch source documents, replace stored documents/chunks, embed, and update health.
+
+One subtle but important detail: `sync_policy` decides whether the scheduler considers a source due. It does not change the sync algorithm by itself. Right now the actual execution path is determined mostly by the job type, and several job types currently share the same full refresh implementation.
+
+### Source Actions In The UI
+
+The Admin Sources page wires these visible actions to backend calls:
+
+- `Create source`: `POST /v1/admin/sources`
+- `Create and sync`: `POST /v1/admin/sources`, then `POST /v1/admin/sources/{source_id}/sync` with `initial_sync`
+- `Sync now`: `POST /v1/admin/sources/{source_id}/sync` with `manual_resync`
+- `Retry sync`: `POST /v1/admin/sources/{source_id}/sync` with `retry_failed_sync`
+- `Permission refresh`: `POST /v1/admin/sources/{source_id}/sync` with `permission_refresh`
+- `Re-embed`: `POST /v1/admin/sources/{source_id}/reembed`
+- `Disable` or `Enable`: `PATCH /v1/admin/sources/{source_id}`
+- `Save changes`: `PATCH /v1/admin/sources/{source_id}`
 
 ## Configuration
 
