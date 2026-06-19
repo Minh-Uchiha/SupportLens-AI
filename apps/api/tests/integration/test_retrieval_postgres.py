@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import pytest
 
+from app.db.session import db_session_scope
+from app.modules.auth_policy.schemas import RequestContext, Role
+from app.modules.retrieval.schemas import RetrievalOptions
+from app.modules.retrieval.service import lexical_search
+
 
 @pytest.fixture(autouse=True)
 def _require_postgres(is_postgres):
@@ -34,6 +39,24 @@ def test_postgres_vector_finds_paraphrased_question(client, admin_headers, user_
     _seed_source(client, admin_headers, "Error SL-429 means the tenant exceeded support rate limits. Retry after the backoff window.")
     response = client.post("/v1/chat/messages", json={"message": "tenant went over its request quota"}, headers=user_headers)
     assert response.json()["answer_state"] in {"answered", "refused_no_evidence"}
+
+
+def test_postgres_lexical_handles_natural_language_policy_question(client, admin_headers, test_settings):
+    source_text = (
+        "Adobe takes two company-wide breaks each year. For 2026, they are "
+        "June 29-July 3, 2026, and December 24-31, 2026, inclusive of Adobe-paid holidays. "
+        "Employees working at least 24 hours per week will be paid for Company-designated holidays."
+    )
+    _seed_source(client, admin_headers, source_text, name="Adobe break policy")
+    context = RequestContext(
+        tenant_id="tenant-a",
+        user_id="user-a",
+        roles={Role.end_user, Role.tenant_admin},
+    )
+    with db_session_scope(test_settings):
+        rows = lexical_search(context, "When can an Adobe employee take a break in 2026?", RetrievalOptions())
+    assert rows
+    assert any("June 29" in row.text and "December 24" in row.text for row in rows)
 
 
 def test_postgres_last_known_good_index_preserved_on_failed_sync(client, admin_headers, user_headers):

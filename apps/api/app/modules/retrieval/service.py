@@ -17,6 +17,11 @@ from app.modules.source_management.service import get_chunks_for_tenant, get_doc
 logger = logging.getLogger(__name__)
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
+_LEXICAL_STOPWORDS = {
+    "the", "and", "for", "that", "this", "with", "what", "when", "where", "which",
+    "who", "why", "how", "can", "could", "would", "should", "have", "has", "had",
+    "are", "was", "were", "his", "her", "their", "our", "you", "your", "within",
+}
 
 # Candidate pool size per signal before merge/rerank (LLD: lexical top 50 + vector top 50).
 _CANDIDATE_LIMIT = 50
@@ -53,22 +58,42 @@ def _allowed_source_ids(context: RequestContext, options: RetrievalOptions) -> s
 
 
 def _pg_lexical_search(context: RequestContext, query: str, allowed_sources: set[str] | None) -> list[EvidenceChunk]:
-    # ts_rank scores full-text relevance; trigram similarity catches fuzzy/near-exact matches
-    # (for example slightly misspelled error codes) that plain full-text would miss.
+    # Combine web-style full-text, OR-style keyword fallback, and trigram similarity.
+    # Natural support questions often mix user context ("Minh") with policy terms
+    # ("break", "2026"); requiring every term to match makes lexical search disappear.
+    token_query = _ts_or_query(query)
     sql = text(
         """
+        WITH q AS (
+          SELECT websearch_to_tsquery('english', :query) AS web_query,
+                 to_tsquery('english', :token_query) AS token_query
+        )
         SELECT id, source_id, document_id, text, citation_anchor,
-               (ts_rank(tsv, plainto_tsquery('english', :query))
+               (ts_rank(tsv, q.web_query)
+                + ts_rank(tsv, q.token_query)
                 + similarity(text, :query)) AS score
-        FROM knowledge_chunks
+        FROM knowledge_chunks, q
         WHERE tenant_id = :tenant_id
-          AND (tsv @@ plainto_tsquery('english', :query) OR text % :query)
+          AND (
+            tsv @@ q.web_query
+            OR tsv @@ q.token_query
+            OR similarity(text, :query) > 0.05
+          )
           AND (:no_source_filter OR source_id IN :source_ids)
         ORDER BY score DESC
         LIMIT :limit
         """
     ).bindparams(bindparam("source_ids", expanding=True))
-    return _run_chunk_query(context, sql, query, allowed_sources)
+    return _run_chunk_query(context, sql, query, allowed_sources, token_query=token_query)
+
+
+def _ts_or_query(query: str) -> str:
+    tokens = [
+        token
+        for token in tokenize(query)
+        if len(token) > 2 and token not in _LEXICAL_STOPWORDS
+    ]
+    return " | ".join(dict.fromkeys(tokens)) or "zzznomatchtoken"
 
 
 def _pg_vector_search(context: RequestContext, query_embedding: list[float], allowed_sources: set[str] | None) -> list[EvidenceChunk]:
@@ -96,6 +121,7 @@ def _run_chunk_query(
     query: str | None,
     allowed_sources: set[str] | None,
     query_vector: str | None = None,
+    token_query: str | None = None,
 ) -> list[EvidenceChunk]:
     params: dict[str, object] = {
         "tenant_id": context.tenant_id,
@@ -109,6 +135,8 @@ def _run_chunk_query(
         params["query"] = query
     if query_vector is not None:
         params["query_vector"] = query_vector
+    if token_query is not None:
+        params["token_query"] = token_query
     rows = current_session().execute(sql, params).mappings().all()
     results: list[EvidenceChunk] = []
     for row in rows:

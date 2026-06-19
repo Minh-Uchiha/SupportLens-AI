@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import time
 
 from pydantic import BaseModel, Field
@@ -52,7 +53,7 @@ class PromptBundle(BaseModel):
 
 
 def _deterministic_text(prompt_bundle: PromptBundle) -> str:
-    """Produce a grounded answer from the leading evidence chunk, with a citation marker.
+    """Produce a grounded JSON answer from the leading evidence chunk.
 
     This is intentionally not a real model: it extracts the first sentence of the top
     chunk and cites that chunk. It keeps the offline test suite and lightweight installs
@@ -61,7 +62,12 @@ def _deterministic_text(prompt_bundle: PromptBundle) -> str:
     leading = prompt_bundle.evidence.chunks[0]
     sentence = leading.text.strip().split(". ")[0].strip()
     answer = sentence if sentence.endswith(".") else f"{sentence}."
-    return f"{answer} {CITATION_PREFIX}{leading.chunk_id}{CITATION_SUFFIX}"
+    return json.dumps({
+        "state": "answered",
+        "answer": answer,
+        "clarifying_question": "",
+        "citation_ids": [leading.chunk_id],
+    })
 
 
 def call_model(prompt_bundle: PromptBundle, model_options: dict | None = None) -> ModelResult:
@@ -80,7 +86,7 @@ def call_model(prompt_bundle: PromptBundle, model_options: dict | None = None) -
     started = time.perf_counter()
     attempts = settings.llm_max_retries + 1
     try:
-        text = complete(prompt_bundle.messages)
+        text = complete(prompt_bundle.messages, model_options)
         latency_ms = (time.perf_counter() - started) * 1000
         return ModelResult(text=text, model=settings.litellm_model, latency_ms=latency_ms, attempts=attempts)
     except ModelCallError:

@@ -217,7 +217,7 @@ curl -s -X POST http://localhost:8000/v1/chat/messages \
 
 With async ingestion (the Compose default), give the sync worker a moment to finish before asking, or check `GET /v1/admin/sources/$SOURCE/health`.
 
-> Note: the Compose API image installs `pip install -e .` without the `embeddings` extra, so by default it uses the deterministic embedding fallback (retrieval still works, but embeddings are not semantically meaningful). For real `sentence-transformers` embeddings in Compose, change the API `Dockerfile` to `pip install --no-cache-dir -e '.[embeddings]'` (and the worker `Dockerfile` likewise) and rebuild, or use Option 2 below to run the API on the host with the extra installed.
+> Note: the Compose API and worker images install the `embeddings` extra, so new syncs use `sentence-transformers` when the model can be downloaded and loaded. If existing chunks were created before rebuilding these images, run a `reembed` sync or resync the source so stored vectors no longer use the deterministic fallback.
 
 #### Option 2: Run the API on the host against Compose model services
 

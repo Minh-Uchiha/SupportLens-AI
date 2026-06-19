@@ -29,10 +29,20 @@ def _is_transient(exc: Exception) -> bool:
     return False
 
 
-def _post_completion(messages: list[dict[str, str]]) -> str:
+def _post_completion(messages: list[dict[str, str]], model_options: dict | None = None) -> str:
     settings = get_settings()
     url = settings.litellm_base_url.rstrip("/") + "/chat/completions"
-    payload = {"model": settings.litellm_model, "messages": messages}
+    payload = {
+        "model": settings.litellm_model,
+        "messages": messages,
+        "temperature": settings.llm_temperature,
+        "max_tokens": settings.llm_max_tokens,
+    }
+    # Conservative stop sequences bound runaway repeated-marker output; callers can override.
+    if settings.llm_stop_sequences:
+        payload["stop"] = settings.llm_stop_sequences
+    if model_options:
+        payload.update(model_options)
     with httpx.Client(timeout=settings.llm_timeout_seconds) as client:
         response = client.post(url, json=payload)
         response.raise_for_status()
@@ -41,7 +51,7 @@ def _post_completion(messages: list[dict[str, str]]) -> str:
     return body["choices"][0]["message"]["content"]
 
 
-def complete(messages: list[dict[str, str]]) -> str:
+def complete(messages: list[dict[str, str]], model_options: dict | None = None) -> str:
     """Call the LiteLLM proxy with bounded retries, returning the generated text.
 
     Raises ModelCallError once the retry budget is exhausted so the gateway can decide
@@ -52,7 +62,7 @@ def complete(messages: list[dict[str, str]]) -> str:
     last_error: Exception | None = None
     for attempt in range(1, attempts + 1):
         try:
-            return _post_completion(messages)
+            return _post_completion(messages, model_options)
         except Exception as exc:  # noqa: BLE001 - normalized into ModelCallError below
             last_error = exc
             transient = _is_transient(exc)
