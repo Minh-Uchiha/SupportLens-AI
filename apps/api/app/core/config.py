@@ -28,9 +28,19 @@ class Settings(BaseSettings):
     local_deterministic_llm: bool = True
     # LiteLLM call budget. Transient failures (timeout, connection error, 5xx) are retried
     # up to llm_max_retries times with a fixed backoff, all within the timeout budget.
-    llm_timeout_seconds: float = 30.0
+    # Generous timeout: the local model may be an 8B-class model on CPU, where a single
+    # generation can take well over 30s. A short timeout would fall back to the deterministic
+    # generator (which answers from the top chunk) and defeat the relevance refusal.
+    llm_timeout_seconds: float = 120.0
     llm_max_retries: int = 2
     llm_retry_backoff_seconds: float = 0.5
+    llm_temperature: float = 0.0
+    llm_max_tokens: int = 450
+    # Conservative stop sequences sent to LiteLLM. These target the repeated-marker failure
+    # pattern (llama3.2:1b emitting "CLARIFY: ... PARTIAL: ...") and runaway prose, NOT the JSON
+    # itself: the draft is a single flat object, so "}" or a single "\n" could truncate valid
+    # output. This is a secondary guard behind llm_max_tokens; an empty list disables it.
+    llm_stop_sequences: list[str] = Field(default_factory=lambda: ["\nCLARIFY:", "\nPARTIAL:", "\n\n\n"])
     # When enabled, source sync runs on an RQ worker instead of inline in the request.
     # Defaults off so local dev and the synchronous test suite keep their current behavior;
     # Docker Compose turns it on.
@@ -45,6 +55,14 @@ class Settings(BaseSettings):
     def parse_cors_origins(cls, value: object) -> object:
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
+
+    @field_validator("llm_stop_sequences", mode="before")
+    @classmethod
+    def parse_stop_sequences(cls, value: object) -> object:
+        # Allow a comma-separated env override; an empty/blank value disables stop sequences.
+        if isinstance(value, str):
+            return [item for item in value.split(",") if item]
         return value
 
 

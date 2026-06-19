@@ -158,11 +158,19 @@ def get_conversation_detail(context: RequestContext, conversation_id: str) -> di
 
 def conversation_context(context: RequestContext, conversation_id: str) -> list[str]:
     _get_conversation_row(context, conversation_id)
-    return list(
-        current_session().scalars(
-            select(MessageRow.content).where(MessageRow.conversation_id == conversation_id).order_by(MessageRow.created_at)
-        )
-    )
+    session = current_session()
+    messages = list(session.scalars(select(MessageRow).where(MessageRow.conversation_id == conversation_id).order_by(MessageRow.created_at)))
+    answers_by_message_id = {
+        answer.message_id: answer
+        for answer in session.scalars(select(AnswerRow).where(AnswerRow.conversation_id == conversation_id).order_by(AnswerRow.created_at))
+    }
+    turns: list[str] = []
+    for message in messages:
+        turns.append(f"User: {message.content}")
+        answer = answers_by_message_id.get(message.id)
+        if answer is not None:
+            turns.append(f"Assistant ({answer.answer_state}): {answer.text}")
+    return turns[-8:]
 
 
 def submit_feedback(context: RequestContext, payload: FeedbackCreate) -> FeedbackRecord:
